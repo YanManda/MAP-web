@@ -1,0 +1,528 @@
+import pandas as pd
+import numpy as np
+
+# Input target pesticides
+Pesticide = ['IMI', 'ACE', 'THM'] # Input the list of the chemical compounds
+for i in range(len(Pesticide)):
+    if Pesticide[i] == 'IMI':  # Enter the name of the target active ingredient
+        pesnum = i
+        print("Active ingredient：" + Pesticide[i])
+
+# Output：construct dataframes
+condata = pd.DataFrame()
+con_Xdata = pd.DataFrame()
+massdata = pd.DataFrame()
+mass_Xdata = pd.DataFrame()
+Fluxdata = pd.DataFrame()
+Fluxlgdata = pd.DataFrame()
+
+# Default parameters
+Fixpara = {'T': 293.15, 't': 0.72,
+           'α_acid': 1, 'α_base': -1, 'ks': 0.3, 'Act': 0.5, 'R': 8.314,
+           'v_wind': 3, 'P_SoilW': 2e-6, 'P_SoilA_n': 0.02, 'P_Sed_W': 0.0001, 'P_W_Sed': 0.01,
+           'ε_coll': 2e+5, 'v_dd': 3.6, 'v_sedi': 0.104, 'v_res': 2.78e-6, 'v_buri': 3.42e-7}
+ρS = {'A': 2, 'Ns': 2.5, 'AsP': 2.5, 'AsD': 2.5, 'AsV': 2.5, 'AsO': 2.5, 'AsT': 2.5, 'W': 2.5, 'Sed': 2.5}
+IonStr = {'A': 2e-4, 'Ns': 0.03, 'AsP': 0.03, 'AsD': 0.03, 'AsV': 0.03, 'AsO': 0.03, 'AsT': 0.03, 'W': 0.003,
+          'Sed': 0.003}
+
+# Input physicochemical and application parameters
+Pestpara = pd.read_excel('ParaWR3.xlsx', sheet_name='Physicochemical_para')
+PestAppS = pd.read_excel('ParaWR3.xlsx', sheet_name='Application_Soil')
+PestAppA = pd.read_excel('ParaWR3.xlsx', sheet_name='Application_Air')
+
+i = pesnum
+Pest = {'Type': Pestpara.values[0, i + 1], 'inum': Pestpara.values[1, i + 1], 'Mol': Pestpara.values[2, i + 1],
+        'Henry': Pestpara.values[3, i + 1],
+        'Vap': Pestpara.values[4, i + 1], 'sol': Pestpara.values[5, i + 1], 'pKa_acid': Pestpara.values[6, i + 1],
+        'pKa_base': Pestpara.values[7, i + 1],
+        'lgKow': Pestpara.values[8, i + 1], 'znum': Pestpara.values[9, i + 1], 'Koc_n': Pestpara.values[10, i + 1],
+        'kdeg_A': Pestpara.values[14, i + 1],
+        'kdeg_S': Pestpara.values[15, i + 1], 'kdeg_W': Pestpara.values[16, i + 1],
+        'kdeg_Sed': Pestpara.values[17, i + 1]}
+Pest['Kaw'] = Pest['Vap'] / (Fixpara['R'] * Fixpara['T'] * Pest['sol'])
+Pest['P_An'] = 36 * (0.3 + 0.2 * Fixpara['v_wind']) * ((18 / Pest['Mol']) ** 0.335)
+Pest['P_W_A'] = 36 * (0.0004 + 0.00004 * (Fixpara['v_wind']) ** 2) * ((32 / Pest['Mol']) ** 0.25)
+
+# Input environmental parameters
+media = ['A', 'Ns', 'AsP', 'AsD', 'AsV', 'AsO', 'AsT', 'W', 'Sed']
+Envpara = pd.read_excel('ParaWR3.xlsx', sheet_name='Environmental_para')
+Envpara_year = pd.read_excel('ParaWR3.xlsx', sheet_name='Annual_para')
+Flowpara = pd.read_excel('ParaWR3.xlsx', sheet_name='Confluence_Sequence')
+Seq = {}  # Reorder the simulation sequence of the river basin based on the confluence sequence of the rivers
+Flowdire = {}  # Establish a river confluence relationship, with each basin corresponding to several upstream basins
+
+n_su = 218  # Enter the number of spatial units
+for i in range(n_su):
+    Seq[Flowpara.values[i, 3] - 1] = i
+    Flowdire[Flowpara.values[i, 3]] = Flowpara.values[i, 4:10]
+
+def append_sorted_data(df, data_dict):
+    if not isinstance(data_dict, dict):
+        print("Warning: Data must be dictionary type, no additional data appended")
+        return df
+    sorted_cols = sorted(data_dict.keys())
+    if df.empty:
+        new_row = pd.DataFrame([data_dict], columns=sorted_cols)
+    else:
+        new_row = pd.DataFrame([data_dict], columns=df.columns)
+    return pd.concat([df, new_row], ignore_index=True)
+
+
+for yr in range(9): # Enter simulated years
+    Envpara_yr = Envpara_year.iloc[(n_su * yr): (n_su * yr + n_su), :]
+    PestAppS_yr = PestAppS.iloc[(n_su * yr): (n_su * yr + n_su), :]
+    PestAppA_yr = PestAppA.iloc[(n_su * yr): (n_su * yr + n_su), :]
+    lgdata1 = pd.DataFrame()
+    Bcondata1 = pd.DataFrame()
+    Fluxflow = pd.DataFrame()
+
+    for i in Seq.keys():
+        Area = {'A': Envpara_yr.values[i, 5], 'Ns': Envpara_yr.values[i, pesnum * 6 + 7],
+                'AsP': Envpara_yr.values[i, pesnum * 6 + 8],
+                'AsD': Envpara_yr.values[i, pesnum * 6 + 9], 'AsV': Envpara_yr.values[i, pesnum * 6 + 10],
+                'AsO': Envpara_yr.values[i, pesnum * 6 + 11], 'AsT': Envpara_yr.values[i, pesnum * 6 + 12],
+                'W': Envpara_yr.values[i, 6], 'Sed': Envpara_yr.values[i, 6]}
+        Depth = {'A': 1000, 'Ns': 0.05, 'AsP': 0.2, 'AsD': 0.2, 'AsV': 0.2, 'AsO': 0.2, 'AsT': 0.2,
+                 'W': Envpara.values[i, 7], 'Sed': 0.03}
+        FraS = {'A': 2e-11, 'Ns': 0.6, 'AsP': 0.6, 'AsD': 0.6, 'AsV': 0.6, 'AsO': 0.6, 'AsT': 0.6,
+                'W': Envpara.values[i, 1], 'Sed': 0.2}
+        FraW = {'A_cloud': 2e-11, 'A_aeros': 3e-7, 'Ns': Envpara_yr.values[i, 2], 'AsP': Envpara_yr.values[i, 2],
+                'AsD': Envpara_yr.values[i, 2], 'AsV': Envpara_yr.values[i, 2], 'AsO': Envpara_yr.values[i, 2],
+                'AsT': Envpara_yr.values[i, 2], 'W': 1, 'Sed': 0.8}
+        FraG = {'A': 1, 'Ns': Envpara_yr.values[i, 3], 'AsP': Envpara_yr.values[i, 3],
+                'AsD': Envpara_yr.values[i, 3],
+                'AsV': Envpara_yr.values[i, 3], 'AsO': Envpara_yr.values[i, 3], 'AsT': Envpara_yr.values[i, 3],
+                'W': 0, 'Sed': 0}
+        OC = {'A': 0.1, 'Ns': Envpara.values[i, 2], 'AsP': Envpara.values[i, 3], 'AsD': Envpara.values[i, 3],
+              'AsV': Envpara.values[i, 3],
+              'AsO': Envpara.values[i, 3], 'AsT': Envpara.values[i, 3], 'W': 0.1, 'Sed': 0.05}
+        pHW = {'A_cloud': 5.6, 'A_aeros': 3, 'Ns': Envpara.values[i, 4], 'AsP': Envpara.values[i, 5],
+               'AsD': Envpara.values[i, 5],
+               'AsV': Envpara.values[i, 5], 'AsO': Envpara.values[i, 5], 'AsT': Envpara.values[i, 5], 'W': 7, 'Sed': 7}
+        QW = Envpara.values[i, 6]
+        u_wd = Envpara_yr.values[i, 4]
+        ε_sur = Envpara.values[i, 8]
+        ε_inf = Envpara.values[i, 9]
+        u_eros = Envpara.values[i, 10]
+
+        #  Calculate the partition coefficient of the molecule
+        def Kd_n(x):  # x represents the environmental medium，Kd_i = 0.1 * Kd_n
+            return OC[x] * Pest['Koc_n'] * ρS[x]
+
+
+        #  Calculate the dissociation ratio of molecules, based on its acidity
+        if Pest['Type'] == 0:
+            def φ_n(x):
+                return 1
+
+
+            def φ_i(x):
+                return 0
+
+        elif Pest['Type'] == 1:
+            α = 1
+
+
+            def φ_n(x):
+                return 1 / (1 + 10 ** (α * (pHW[x] - Pest['pKa_acid'])))
+
+
+            def φ_i(x):
+                return 1 - φ_n(x)
+        elif Pest['Type'] == -1:
+            α = -1
+
+
+            def φ_n(x):
+                return 1 / (1 + 10 ** (α * (pHW[x] - Pest['pKa_base'])))
+
+
+            def φ_i(x):
+                return 1 - φ_n(x)
+        else:
+            def φ_n(x):
+                return 1 / (1 + 10 ** (pHW[x] - Pest['pKa_acid']) + 10 ** (Pest['pKa_base'] - pHW[x]))
+
+
+            def φ_i(x):  # Amphoteric molecules are actually divided into anionic and cationic types, but NEOs have not been considered here for the time being
+                return φ_n(x) * (10 ** (pHW[x] - Pest['pKa_acid']) + 10 ** (Pest['pKa_base'] - pHW[x]))
+
+        #  Calculate the activity coefficient
+        if Pest['Type'] == 0:
+            def γ_n(x):
+                return 10 ** (Fixpara['ks'] * IonStr[x])
+
+
+            def γ_i(x):
+                return 1
+        else:
+            def γ_n(x):
+                return 10 ** (Fixpara['ks'] * IonStr[x])
+
+
+            def γ_i(x):
+                return 10 ** (- Fixpara['Act'] * (Pest['znum'] ** 2) * (
+                        IonStr[x] ** 0.5 / (1 + IonStr[x] ** 0.5) - 0.3 * IonStr[x]))
+
+        # Calculate the activity capacity of each medium
+        B = dict()
+        B_X = dict()
+        for j in media:
+            if j == 'A':
+                B_X[j + '_G'] = FraG[j] * φ_n('A_cloud') * Pest['Kaw']
+                B_X[j + '_W'] = FraW['A_cloud'] * (φ_n('A_cloud') / γ_n(j) + φ_i('A_cloud') / γ_i(j)) + \
+                                FraW['A_aeros'] * (φ_n('A_aeros') / γ_n(j) + φ_i('A_aeros') / γ_i(j))
+                B_X[j + '_S'] = FraS[j] * (φ_n('A_aeros') * Kd_n(j) / γ_n(j) + φ_i('A_aeros') * 0.1 * Kd_n(j) / γ_i(j))
+
+            else:
+                B_X[j + '_G'] = FraG[j] * φ_n(j) * Pest['Kaw']
+                B_X[j + '_W'] = FraW[j] * (φ_n(j) / γ_n(j) + φ_i(j) / γ_i(j))
+                B_X[j + '_S'] = FraS[j] * (φ_n(j) * Kd_n(j) / γ_n(j) + φ_i(j) * 0.1 * Kd_n(j) / γ_i(j))
+
+            B[j] = B_X[j + '_G'] + B_X[j + '_W'] + B_X[j + '_S']
+
+        B_X['rain'] = φ_n('A_cloud') / γ_n('A') + φ_i('A_cloud') / γ_i('A')
+
+        # Diffusion process
+        P = dict()
+        P['WA'] = 1 / (φ_n('W') / Pest['P_W_A'] + 1 / (Pest['P_An'] * Pest['Kaw']))
+        P['WSed'] = 1 / (1 / Fixpara['P_Sed_W'] + 1 / Fixpara['P_W_Sed'])
+        Dif = dict()
+        Dif['WA'] = P['WA'] * Area['W'] * φ_n('W')
+        Dif['AW'] = P['WA'] * Area['W'] * φ_n('A_cloud')
+        mediaSoil = media[1:7]
+        for j in mediaSoil:
+            P['A' + j] = 1 / (1 / (Fixpara['P_SoilW'] / φ_n(j) + Fixpara['P_SoilA_n'] * Pest['Kaw']) + 1 / (
+                    Pest['P_An'] * Pest['Kaw']))
+            Dif[j + 'A'] = P['A' + j] * Area[j] * φ_n(j)
+            Dif['A' + j] = P['A' + j] * Area[j] * φ_n('A_cloud')
+        Dif['SedW'] = P['WSed'] * Area['Sed']
+        Dif['WSed'] = P['WSed'] * Area['Sed']
+
+        # Advective flow
+        medfromA = media[1:8]
+        Trs = dict()
+        Trs['out_W'] = QW * B['W']
+        Trs['out_A'] = Area['A'] * Depth['A'] / (Fixpara['t'] * 24) * B['A']
+        Volume = dict()
+        Rct = dict()
+        for j in media:
+            Volume[j] = Area[j] * Depth[j]
+            if j == 'A':
+                Rct[j] = B[j] * Volume[j] * Pest['kdeg_A']
+                for k in medfromA:
+                    Trs['wd_' + j + k] = Area[k] * (Fixpara['ε_coll'] * (B_X['A_W'] + B_X['A_S']) + B_X['rain']) * u_wd
+                    Trs['dd_' + j + k] = Area[k] * (
+                            FraW['A_aeros'] * (φ_n('A_aeros') / γ_n('A') + φ_i('A_aeros') / γ_i('A')) + B_X['A_S']) * \
+                                         Fixpara['v_dd']
+                    Trs[j + k] = Trs['wd_' + j + k] + Trs['dd_' + j + k]
+
+            elif mediaSoil.count(j) > 0:
+                Trs['sur_' + j + 'W'] = Area[j] * B_X[j + '_W'] / FraW[j] * ε_sur * u_wd
+                Trs['inf_' + j] = Area[j] * B_X[j + '_W'] / FraW[j] * ε_inf * u_wd
+                Trs['eros_' + j + 'W'] = Area[j] * B_X[j + '_S'] / FraS[j] * u_eros
+                Trs[j + 'W'] = Trs['sur_' + j + 'W'] + Trs['eros_' + j + 'W']
+                Rct[j] = B[j] * Volume[j] * Pest['kdeg_S']
+
+            elif j == 'W':
+                Trs['sedi_' + j + 'Sed'] = Area[j] * B_X[j + '_S'] * Fixpara['v_sedi']
+                Rct[j] = B[j] * Volume[j] * Pest['kdeg_W']
+
+            else:
+                Trs['res_' + j + 'W'] = Area[j] * B_X[j + '_S'] * Fixpara['v_res']
+                Trs['buri'] = Area[j] * B[j] * Fixpara['v_buri']
+                Rct[j] = B[j] * Volume[j] * Pest['kdeg_Sed']
+
+        m = 0
+        Actmedia = dict()
+        Nomedia = dict()  # Establish a dictionary of the media that need to be removed where the area of a certain medium is 0 and the equation has no solution.
+        for k in Area:
+            m = m + 1
+            if Area[k] != 0:
+                Actmedia[k] = m
+            else:
+                Nomedia[k] = m
+        Nomelist1 = list(Nomedia.values())  # A list of serial numbers starting from 1
+        Nomelist2 = [x - 1 for x in Nomelist1]  # A list of serial numbers starting from 0
+        Blist = list(B.values())
+        Barr = np.array(Blist)
+        Barr = Barr.reshape(len(Blist), 1)
+
+        n = len(media)
+        K = np.zeros((n + 1, n + 1))
+        E = np.zeros((n, 1))
+        L = np.zeros((n, 1))
+        G = np.zeros((n, 1))
+        act = np.zeros((n, 1))
+        np.set_printoptions(precision=2)
+
+        #  Establish matrix row and column labels for all media
+        row = 0
+        col = 0
+        l = 0
+        for l in range(10):
+            K[row][0] = l
+            row = row + 1
+            K[0][col] = l
+            col = col + 1
+
+        K[2, 1] = Trs['ANs'] + Dif['ANs']
+        K[3, 1] = Trs['AAsP'] + Dif['AAsP']
+        K[4, 1] = Trs['AAsD'] + Dif['AAsD']
+        K[5, 1] = Trs['AAsV'] + Dif['AAsV']
+        K[6, 1] = Trs['AAsO'] + Dif['AAsO']
+        K[7, 1] = Trs['AAsT'] + Dif['AAsT']
+        K[8, 1] = Trs['AW'] + Dif['AW']
+
+        K[1, 2] = Dif['NsA']
+        K[1, 3] = Dif['AsPA']
+        K[1, 4] = Dif['AsDA']
+        K[1, 5] = Dif['AsVA']
+        K[1, 6] = Dif['AsOA']
+        K[1, 7] = Dif['AsTA']
+        K[1, 8] = Dif['WA']
+
+        K[8, 2] = Trs['NsW']
+        K[8, 3] = Trs['AsPW']
+        K[8, 4] = Trs['AsDW']
+        K[8, 5] = Trs['AsVW']
+        K[8, 6] = Trs['AsOW']
+        K[8, 7] = Trs['AsTW']
+        K[9, 8] = Trs['sedi_WSed'] + Dif['WSed']
+        K[8, 9] = Trs['res_SedW'] + Dif['SedW']
+
+        K[1, 1] = - sum(K[2:9, 1]) - Trs['out_A'] - Rct['A']
+        K[2, 2] = - K[1, 2] - K[8, 2] - Trs['inf_Ns'] - Rct['Ns']
+        K[3, 3] = - K[1, 3] - K[8, 3] - Trs['inf_AsP'] - Rct['AsP']
+        K[4, 4] = - K[1, 4] - K[8, 4] - Trs['inf_AsD'] - Rct['AsD']
+        K[5, 5] = - K[1, 5] - K[8, 5] - Trs['inf_AsV'] - Rct['AsV']
+        K[6, 6] = - K[1, 6] - K[8, 6] - Trs['inf_AsO'] - Rct['AsO']
+        K[7, 7] = - K[1, 7] - K[8, 7] - Trs['inf_AsT'] - Rct['AsT']
+        K[8, 8] = - K[1, 8] - K[9, 8] - Trs['out_W'] - Rct['W']
+        K[9, 9] = - K[8, 9] - Trs['buri'] - Rct['Sed']
+
+        E[0, 0] = PestAppA_yr.values[i, (2 + pesnum)]
+        E[2, 0] = PestAppS_yr.values[i, (2 + 5 * pesnum)]
+        E[3, 0] = PestAppS_yr.values[i, (3 + 5 * pesnum)]
+        E[4, 0] = PestAppS_yr.values[i, (4 + 5 * pesnum)]
+        E[5, 0] = PestAppS_yr.values[i, (5 + 5 * pesnum)]
+        E[6, 0] = PestAppS_yr.values[i, (6 + 5 * pesnum)]
+
+        if yr != 0:
+            L[0, 0] = Bcondata2.values[i, 0] * Area['A'] * Depth['A'] / 365 / 24
+            L[1, 0] = Bcondata2.values[i, 6] * Area['Ns'] * Depth['Ns'] / 365 / 24
+            L[2, 0] = Bcondata2.values[i, 3] * Area['AsP'] * Depth['AsP'] / 365 / 24
+            L[3, 0] = Bcondata2.values[i, 1] * Area['AsD'] * Depth['AsD'] / 365 / 24
+            L[4, 0] = Bcondata2.values[i, 5] * Area['AsV'] * Depth['AsV'] / 365 / 24
+            L[5, 0] = Bcondata2.values[i, 2] * Area['AsO'] * Depth['AsO'] / 365 / 24
+            L[6, 0] = Bcondata2.values[i, 4] * Area['AsT'] * Depth['AsT'] / 365 / 24
+            L[7, 0] = Bcondata2.values[i, 8] * Area['W'] * Depth['W'] / 365 / 24
+            L[8, 0] = Bcondata2.values[i, 7] * Area['Sed'] * Depth['Sed'] / 365 / 24
+        else:
+            pass
+
+        # G[7, 0], sum: the flux flowing into the (upstream) river  mol/h
+        upflow = np.array(Flowdire[i + 1])
+        upflow = upflow.astype('int')
+        if i == 85:
+            G[7, 0] = (0.1 * Fluxflow.iloc[Seq[78], 49] + Fluxflow.iloc[Seq[84], 49]) * 1000 / Pest['Mol'] / 24 / 365
+        elif i == 80:
+            G[7, 0] = 0.8 * Fluxflow.iloc[Seq[78], 49] * 1000 / Pest['Mol'] / 24 / 365
+        elif i == 81:
+            G[7, 0] = 0.1 * Fluxflow.iloc[Seq[78], 49] * 1000 / Pest['Mol'] / 24 / 365
+        else:
+            x = 0
+            while x < 6:
+                if upflow[x] == 0:
+                    x = x + 1
+                else:
+                    try:
+                        G[7, 0] += Fluxflow.iloc[Seq[upflow[x] - 1], 49] * 1000 / Pest['Mol'] / 24 / 365
+                        x = x + 1
+                    except:
+                        print(i, 'Convergence error')
+                        print(Fluxflow.iloc[:, [0, 49]], '\n')
+
+        #  Delete the virtual medium and tags
+        K1 = np.delete(K, Nomelist1, axis=0)
+        K1 = np.delete(K1, Nomelist1, axis=1)
+        KK = np.delete(K1, 0, axis=0)
+        KK = np.delete(KK, 0, axis=1)
+        EE = np.delete(E, Nomelist2, axis=0)
+        LL = np.delete(L, Nomelist2, axis=0)
+        GG = np.delete(G, Nomelist2, axis=0)
+        act = np.delete(G, Nomelist2, axis=0)
+        BB = np.delete(Barr, Nomelist2, axis=0)
+
+        # Solve the matrix equation
+        try:
+            Kinv = np.linalg.inv(KK)
+        except:
+            print('There is no inverse matrix, which might be because the area of a certain medium is 0')
+        In = EE + LL + GG
+        act = np.matmul(- Kinv, In)  # mol·m-3
+
+        #  Calculate the concentrations of the main compartments and the subcompartments
+        con = act * BB * Pest['Mol']
+        con_X = dict()  # g·m-3
+        k = 0
+        for j in media:
+            if j in list(Actmedia.keys()):
+                if j == 'A':
+                    con_X[j + '_G'] = act[k][0] * B_X[j + '_G'] / FraG[j] * Pest['Mol']
+                    con_X[j + '_W'] = act[k][0] * B_X[j + '_W'] / (FraW['A_aeros'] + FraW['A_cloud']) * Pest['Mol']
+                    con_X[j + '_S'] = act[k][0] * B_X[j + '_S'] / FraS[j] * Pest['Mol']
+                elif (j == 'W') or (j == 'Sed'):
+                    con_X[j + '_G'] = 0
+                    con_X[j + '_W'] = act[k][0] * B_X[j + '_W'] / FraW[j] * Pest['Mol']
+                    con_X[j + '_S'] = act[k][0] * B_X[j + '_S'] / FraS[j] * Pest['Mol']
+                else:
+                    con_X[j + '_G'] = act[k][0] * B_X[j + '_G'] / FraG[j] * Pest['Mol']
+                    con_X[j + '_W'] = act[k][0] * B_X[j + '_W'] / FraW[j] * Pest['Mol']
+                    con_X[j + '_S'] = act[k][0] * B_X[j + '_S'] / FraS[j] * Pest['Mol']
+                k = k + 1
+            else:
+                con_X[j + '_G'] = 0
+                con_X[j + '_W'] = 0
+                con_X[j + '_S'] = 0
+
+        #  Add all the media that were not involved in the matrix equation before to form a complete result
+        #  Result output: concentration and mass
+        allact = dict()  # mol·m-3
+        allcon = dict()  # g·m-3
+        k = 0
+        for j in media:
+            if j in list(Actmedia.keys()):
+                allact[j] = act[k][0]
+                allcon[j] = con[k][0]
+                k = k + 1
+            else:
+                allact[j] = 0
+                allcon[j] = 0
+
+        mass_X = dict()  # kg
+        for j in media:
+            mass_X[j + '_G'] = con_X[j + '_G'] * Area[j] * Depth[j] * FraG[j] / 1000
+            mass_X[j + '_S'] = con_X[j + '_S'] * Area[j] * Depth[j] * FraS[j] / 1000
+            if j == 'A':
+                mass_X[j + '_W'] = con_X[j + '_W'] * Area[j] * Depth[j] * (FraW['A_aeros'] + FraW['A_cloud']) / 1000
+            else:
+                mass_X[j + '_W'] = con_X[j + '_W'] * Area[j] * Depth[j] * FraW[j] / 1000
+
+        allmass = {key: allcon[key] * Area[key] * Depth[key] / 1000 for key in Area}
+
+        #  Result output: transport and transform fluxes
+        Flux = dict()  #  mol/h
+        Flux['D_WA'] = Dif['WA'] * allact['W']
+        Flux['D_AW'] = Dif['AW'] * allact['A']
+        Flux['D_WSed'] = Dif['WSed'] * allact['W']
+        Flux['D_SedW'] = Dif['SedW'] * allact['Sed']
+        for j in medfromA:
+            if j == 'W':
+                Flux['T_wd_A' + j] = Trs['wd_AW'] * allact['A']
+                Flux['T_dd_A' + j] = Trs['dd_AW'] * allact['A']
+                Flux['T_sedi_' + j + 'Sed'] = Trs['sedi_WSed'] * allact[j]
+                Flux['R_' + j] = Rct[j] * allact[j]
+
+            else:
+                Flux['D_A' + j] = Dif['A' + j] * allact['A']
+                Flux['D_' + j + 'A'] = Dif[j + 'A'] * allact[j]
+                Flux['T_wd_A' + j] = Trs['wd_A' + j] * allact['A']
+                Flux['T_dd_A' + j] = Trs['dd_A' + j] * allact['A']
+                Flux['T_sur_' + j + 'W'] = Trs['sur_' + j + 'W'] * allact[j]
+                Flux['T_inf_' + j] = Trs['inf_' + j] * allact[j]
+                Flux['T_eros_' + j + 'W'] = Trs['eros_' + j + 'W'] * allact[j]
+                Flux['R_' + j] = Rct[j] * allact[j]
+
+        Flux['T_res_SedW'] = Trs['res_SedW'] * allact['Sed']
+        Flux['T_buri'] = Trs['buri'] * allact['Sed']
+
+        Flux['T_outA'] = Trs['out_A'] * allact['A']
+        Flux['T_outW'] = Trs['out_W'] * allact['W']
+        Flux['T_inW'] = G[7, 0]
+        Flux['R_A'] = Rct['A'] * allact['A']
+        Flux['R_Sed'] = Rct['Sed'] * allact['Sed']
+
+        for key, value in Flux.items():  # kg/yr
+            new_value = value * Pest['Mol'] / 1000 * 24 * 365
+            Flux[key] = new_value
+
+        #   The cumulative amount and the calculation of the concentration of that year as the background concentration of the following year
+        Lg = dict()
+        Bcon = dict()   # mol/m3
+        for key, value in allmass.items():  # mol/h
+            new_value = value * 1000 / Pest['Mol'] / 365 / 24
+            Lg[key] = new_value
+
+        for key, value in allcon.items():
+            new_value = value / Pest['Mol']
+            Bcon[key] = new_value
+
+        lgdata1 = append_sorted_data(lgdata1, Lg)
+        Bcondata1 = append_sorted_data(Bcondata1, Bcon)
+
+        #  Add the year and river basin information to the output result
+        allcon['3WR_ID'] = i + 1
+        allcon['1year'] = yr + 2013
+        con_X['3WR_ID'] = i + 1
+        con_X['1year'] = yr + 2013
+        allmass['3WR_ID'] = i + 1
+        allmass['1year'] = yr + 2013
+        mass_X['3WR_ID'] = i + 1
+        mass_X['1year'] = yr + 2013
+        Flux['3WR_ID'] = i + 1
+        Flux['1year'] = yr + 2013
+
+        Fluxlg = dict()
+        if yr != 0:
+            Fluxlg['A'] = L[0, 0]
+            Fluxlg['Ns'] = L[1, 0]
+            Fluxlg['AsP'] = L[2, 0]
+            Fluxlg['AsD'] = L[3, 0]
+            Fluxlg['AsV'] = L[4, 0]
+            Fluxlg['AsO'] = L[5, 0]
+            Fluxlg['AsT'] = L[6, 0]
+            Fluxlg['W'] = L[7, 0]
+            Fluxlg['Sed'] = L[8, 0]
+
+            for key, value in Fluxlg.items():  # kg/yr
+                new_value = value * Pest['Mol'] / 1000 * 24 * 365
+                Fluxlg[key] = new_value
+        else:
+            Fluxlg['A'] = 0
+            Fluxlg['Ns'] = 0
+            Fluxlg['AsP'] = 0
+            Fluxlg['AsD'] = 0
+            Fluxlg['AsV'] = 0
+            Fluxlg['AsO'] = 0
+            Fluxlg['AsT'] = 0
+            Fluxlg['W'] = 0
+            Fluxlg['Sed'] = 0
+
+        Fluxlg['3WR_ID'] = i + 1
+        Fluxlg['1year'] = yr + 2013
+
+        #  write all results
+        condata = append_sorted_data(condata, allcon)
+        con_Xdata = append_sorted_data(con_Xdata, con_X)
+        massdata = append_sorted_data(massdata, allmass)
+        mass_Xdata = append_sorted_data(mass_Xdata, mass_X)
+        Fluxdata = append_sorted_data(Fluxdata, Flux)
+        Fluxflow = append_sorted_data(Fluxflow, Flux)
+        Fluxlgdata = append_sorted_data(Fluxlgdata, Fluxlg)
+
+    Bcondata2 = pd.DataFrame()
+    lgdata2 = pd.DataFrame()
+    lgdata2 = lgdata1
+    Bcondata2 = Bcondata1
+
+    print(str(yr + 2013) + ": Completed")
+
+with pd.ExcelWriter('Env_results.xlsx', mode='w', engine='openpyxl') as book:
+    condata.to_excel(book, sheet_name="Concentr_g·m-3", index=False)
+    con_Xdata.to_excel(book, sheet_name="Sub_Concentr_g·m-3", index=False)
+    massdata.to_excel(book, sheet_name="Mass_kg", index=False)
+    mass_Xdata.to_excel(book, sheet_name="Sub_Masskg", index=False)
+    Fluxdata.to_excel(book, sheet_name="Flux_kg·yr-1", index=False)
+    Fluxlgdata.to_excel(book, sheet_name="Legacy_kg·yr-1", index=False)
+
