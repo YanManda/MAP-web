@@ -44,10 +44,6 @@ async function getModelSource() {
 }
 
 function prepareModel(source) {
-  const selectionPattern = /Pesticide = \['IMI', 'ACE', 'THM'\][^\r\n]*\r?\nfor i in range\(len\(Pesticide\)\):\r?\n    if Pesticide\[i\] == 'IMI':[^\r\n]*\r?\n        pesnum = i\r?\n        print\("Active ingredient：" \+ Pesticide\[i\]\)/;
-  const browserSelection = `Pesticide = ['IMI', 'ACE', 'THM']\nif TARGET_PESTICIDE not in Pesticide:\n    raise ValueError(f"Unknown active ingredient: {TARGET_PESTICIDE}")\npesnum = Pesticide.index(TARGET_PESTICIDE)\nprint("Active ingredient：" + TARGET_PESTICIDE)`;
-  if (!selectionPattern.test(source)) throw new Error('算法入口已变化，无法应用浏览器参数适配。');
-
   const summaryCode = `
 \n# Browser visualization summary
 _media_columns = ['A', 'Ns', 'AsP', 'AsD', 'AsV', 'AsO', 'AsT', 'W', 'Sed']
@@ -63,7 +59,7 @@ RESULT_SUMMARY = {
     'topFluxes': [{'path': key, 'value': float(value)} for key, value in _flux_totals.items()],
 }
 `;
-  return source.replace(selectionPattern, browserSelection) + summaryCode;
+  return source + summaryCode;
 }
 
 function handleOutput(message) {

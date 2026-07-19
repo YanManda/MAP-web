@@ -2,11 +2,12 @@ import pandas as pd
 import numpy as np
 
 # Input target pesticides
-Pesticide = ['IMI', 'ACE', 'THM'] # Input the list of the chemical compounds
-for i in range(len(Pesticide)):
-    if Pesticide[i] == 'IMI':  # Enter the name of the target active ingredient
-        pesnum = i
-        print("Active ingredient：" + Pesticide[i])
+Pesticide = ['IMI', 'ACE', 'THM']  # Input the list of the chemical compounds
+TARGET_PESTICIDE = globals().get('TARGET_PESTICIDE', 'IMI')
+if TARGET_PESTICIDE not in Pesticide:
+    raise ValueError(f'Unknown active ingredient: {TARGET_PESTICIDE}')
+pesnum = Pesticide.index(TARGET_PESTICIDE)
+print("Active ingredient：" + TARGET_PESTICIDE)
 
 # Output：construct dataframes
 condata = pd.DataFrame()
