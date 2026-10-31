@@ -3,41 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="在浏览器中运行 WR3 农药环境归趋模型，查看浓度、质量与迁移通量。" />
+    <meta name="description" content="在浏览器中运行 MAP 多介质农药环境归趋模型，查看浓度、质量与迁移通量。" />
     <meta name="theme-color" content="#153f3a" />
-    <title>WR3 流域归趋实验台</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>MAP环境归趋模拟平台V1.0</title>
+    <link rel="stylesheet" href="./styles.css?v=20261030-3" />
+    <script defer src="./vendor/xlsx.full.min.js?v=0.18.5"></script>
   </head>
   <body>
-    <!-- Direction: a browser-only scientific workbench—quiet field-notebook styling, with the model's nine environmental media as the visual signature. -->
     <a class="skip-link" href="#workspace">跳到模型设置</a>
 
     <header class="masthead">
-      <a class="brand" href="#top" aria-label="WR3 首页">
-        <span class="brand-mark">WR<sup>3</sup></span>
-        <span class="brand-copy">流域归趋实验台<br /><small>Watershed fate model</small></span>
+      <a class="brand" href="#top" aria-label="MAP 首页">
+        <span class="brand-copy">MAP环境归趋模拟平台V1.0</span>
       </a>
-      <div class="privacy-note"><span aria-hidden="true"></span> 数据仅在本机处理</div>
+      <div class="header-help">需要帮助？<a href="mailto:xiaoman.yan@outlook.com">xiaoman.yan@outlook.com</a></div>
     </header>
 
     <main id="top">
-      <section class="intro" aria-labelledby="page-title">
+      <section class="intro" aria-label="平台介绍">
         <div class="intro-copy">
-          <p class="eyebrow">多介质环境归趋模型 · WR3</p>
-          <h1 id="page-title">追踪一种农药，<br />穿过一整片流域。</h1>
-          <p class="lede">上传模型参数，计算 218 个空间单元中空气、土壤、水体与沉积物之间的浓度、质量和年度迁移通量。</p>
+          <p class="lede">上传模型参数进行在线模拟，即可获得目标成分在土壤、水体、沉积物、大气介质中的浓度、质量和迁移转化通量分布结果。</p>
         </div>
-        <div class="media-river" aria-label="模型覆盖的九种环境介质">
+        <div class="media-river" id="media-river" aria-label="模型覆盖的九种环境介质">
           <div class="river-line" aria-hidden="true"></div>
-          <span>A<small>空气</small></span>
-          <span>Ns<small>自然土</small></span>
-          <span>AsP<small>水田</small></span>
-          <span>AsD<small>旱地</small></span>
-          <span>AsV<small>菜地</small></span>
-          <span>AsO<small>果园</small></span>
-          <span>AsT<small>茶园</small></span>
-          <span>W<small>水体</small></span>
-          <span>Sed<small>沉积物</small></span>
         </div>
       </section>
 
@@ -45,33 +33,41 @@
         <aside class="control-panel">
           <div class="section-heading">
             <span class="section-kicker">模型设置</span>
-            <h2>准备一次计算</h2>
           </div>
 
-          <label class="field-label" for="pesticide">目标活性成分</label>
+          <label class="field-label" for="model-type">介质划分方案</label>
           <div class="select-wrap">
-            <select id="pesticide">
-              <option value="IMI">IMI · 吡虫啉</option>
-              <option value="ACE">ACE · 啶虫脒</option>
-              <option value="THM">THM · 噻虫嗪</option>
+            <select id="model-type">
+              <option value="media9">5种农业土壤/自然土壤/水体/沉积物/大气</option>
+              <option value="media6">农业/自然/城市土壤/水体/沉积物/大气</option>
             </select>
           </div>
 
           <label class="upload-box" id="drop-zone" for="workbook">
             <input id="workbook" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
             <span class="upload-glyph" aria-hidden="true">↥</span>
-            <strong id="upload-title">选择 ParaWR3.xlsx</strong>
-            <small id="upload-detail">或把文件拖到这里 · 文件不会离开浏览器</small>
+            <strong id="upload-title">选择输入文件</strong>
+            <small id="upload-detail">支持自定义文件名 · 文件不会离开浏览器</small>
           </label>
+          <p class="upload-message" id="upload-message" hidden role="alert"></p>
 
-          <div class="validation-list" aria-label="工作簿要求">
-            <div><i aria-hidden="true">✓</i><span>包含 6 个模型工作表</span></div>
-            <div><i aria-hidden="true">✓</i><span>覆盖 218 个空间单元与 9 个年份</span></div>
-            <div><i aria-hidden="true">✓</i><span>保留原始列序与汇流关系</span></div>
+          <details class="input-guide">
+            <summary>展开获得示例输入文件</summary>
+            <div class="example-links">
+              <a id="example9-link" href="./Example_9.xlsx" download="Example_9.xlsx">下载9介质示例 Example_9.xlsx</a>
+              <a id="example6-link" href="./Example_6.xlsx" download="Example_6.xlsx">下载6介质示例 Example_6.xlsx</a>
+              <a href="./模型原理与引用.docx" download="模型原理与引用.docx">模型原理与引用.docx</a>
+            </div>
+          </details>
+
+          <div class="workbook-stats" id="workbook-stats" aria-live="polite">
+            <div><span>目标成分</span><strong id="input-compounds">—</strong></div>
+            <div><span>空间单元</span><strong id="input-spaces">—</strong></div>
+            <div><span>时间尺度</span><strong id="input-years">—</strong></div>
           </div>
 
           <button class="run-button" id="run-button" type="button" disabled>
-            <span>开始流域计算</span><b aria-hidden="true">→</b>
+            <span>开始计算</span><b aria-hidden="true">→</b>
           </button>
           <button class="cancel-button" id="cancel-button" type="button" hidden>终止本次计算</button>
 
@@ -82,57 +78,58 @@
           </div>
         </aside>
 
-        <section class="results-panel" aria-labelledby="results-title">
+        <section class="results-panel" aria-label="计算结果">
           <div class="results-header">
             <div>
               <span class="section-kicker">计算结果</span>
-              <h2 id="results-title">流域环境剖面</h2>
             </div>
-            <button class="download-button" id="download-button" type="button" hidden>下载完整 Excel</button>
+            <button class="download-button" id="download-button" type="button" hidden>下载完整结果</button>
           </div>
 
           <div class="empty-state" id="empty-state">
             <div class="basin-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
-            <p>结果从一次计算开始</p>
-            <small>选择右侧工作簿并运行模型，年度趋势和介质分布将在这里出现。</small>
+            <p>追溯环境归趋从一次计算开始</p>
+            <small>选择左侧工作簿并运行模型，结果分布将在这里出现。</small>
           </div>
 
           <div class="error-state" id="error-state" hidden role="alert">
             <strong>模型没有完成计算</strong>
             <p id="error-message"></p>
-            <small>请确认工作簿名称、工作表和数据结构与原模型一致。</small>
+            <small>请确认四张模型工作表、字段名称、介质方案和数据结构与输入指引一致。</small>
           </div>
 
           <div class="result-content" id="result-content" hidden>
             <div class="result-meta">
-              <div><span>活性成分</span><strong id="metric-pesticide">—</strong></div>
-              <div><span>空间单元</span><strong>218</strong></div>
-              <div><span>模拟年度</span><strong>2013—2021</strong></div>
-              <div><span>介质数量</span><strong>9</strong></div>
+              <div class="compound-control">
+                <label for="result-compound">目标成分</label>
+                <div class="select-wrap result-select">
+                  <select id="result-compound" aria-label="选择要显示的有效成分"></select>
+                </div>
+              </div>
+              <div><span>空间单元</span><strong id="metric-spaces">—</strong></div>
+              <div><span>模拟年度</span><strong id="metric-years">—</strong></div>
+              <div><span>介质数量</span><strong id="metric-media">—</strong></div>
             </div>
 
+            <div class="chart-grid result-grid">
             <article class="chart-card chart-wide">
               <div class="chart-title">
-                <div><span>年度趋势</span><h3>全流域农药总质量</h3></div>
-                <small>kg · 各空间单元与环境介质合计</small>
+                <div><h3>区域残留总量（kg）</h3></div>
               </div>
               <div class="canvas-wrap"><canvas id="mass-chart" role="img" aria-label="年度总质量折线图"></canvas></div>
             </article>
 
-            <div class="chart-grid">
               <article class="chart-card">
                 <div class="chart-title">
-                  <div><span>最终年份 · 2021</span><h3>介质平均浓度</h3></div>
-                  <small>g·m⁻³</small>
+                  <div><h3>各介质残留质量占比</h3><small id="final-year-label"></small></div>
                 </div>
-                <div class="bar-list" id="concentration-bars"></div>
+                <div class="pie-layout"><div id="mass-pie" class="mass-pie" role="img" aria-label="最终年份各介质质量占比饼图"></div></div>
               </article>
               <article class="chart-card">
                 <div class="chart-title">
-                  <div><span>累计迁移与转化</span><h3>主要通量路径</h3></div>
-                  <small>kg·yr⁻¹ · 绝对值排序</small>
+                  <div><h3>迁移转化通量排序（kg/yr）</h3><small id="flux-year-label"></small></div>
                 </div>
-                <ol class="flux-list" id="flux-list"></ol>
+                <div class="canvas-wrap flux-canvas-wrap"><canvas id="flux-chart" role="img" aria-label="最终年份迁移转化通量前10名柱状图"></canvas></div>
               </article>
             </div>
           </div>
@@ -140,10 +137,7 @@
       </section>
     </main>
 
-    <footer>
-      <span>WR3 · Browser edition</span>
-      <span>计算由 Pyodide 在本机完成</span>
-    </footer>
-    <script type="module" src="./app.js"></script>
+    <noscript>请启用浏览器 JavaScript 后使用本平台。</noscript>
+    <script src="./app.js?v=20261030-2" defer></script>
   </body>
 </html>

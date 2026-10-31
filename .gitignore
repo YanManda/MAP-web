@@ -2,3 +2,10 @@
 ParaWR3.xlsx
 Env_results*.xlsx
 .codex-spreadsheet-tmp/
+data/
+stats/
+*.sqlite3
+*.sqlite3-*
+_site/
+.codex_tmp/
+__pycache__/
